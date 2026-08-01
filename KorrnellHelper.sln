@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KorrnellHelper.Api", "KorrnellHelper.Api.csproj", "{1C3B8DEA-169D-4D3F-8E13-8995CD1526BC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KorrnellHelper.Application", "KorrnellHelper.Application\KorrnellHelper.Application.csproj", "{0BCC27BB-A39C-4CB8-9EC7-01B7EE78ED36}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KorrnellHelper.Domain", "KorrnellHelper.Domain\KorrnellHelper.Domain.csproj", "{CDACFE6A-933B-44F4-9D1A-B7A011410376}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KorrnellHelper.Infrastructure", "KorrnellHelper.Infrastructure\KorrnellHelper.Infrastructure.csproj", "{A222C7FC-5109-4322-82F4-DA71A09E2BF9}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1C3B8DEA-169D-4D3F-8E13-8995CD1526BC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1C3B8DEA-169D-4D3F-8E13-8995CD1526BC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1C3B8DEA-169D-4D3F-8E13-8995CD1526BC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1C3B8DEA-169D-4D3F-8E13-8995CD1526BC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0BCC27BB-A39C-4CB8-9EC7-01B7EE78ED36}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0BCC27BB-A39C-4CB8-9EC7-01B7EE78ED36}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0BCC27BB-A39C-4CB8-9EC7-01B7EE78ED36}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0BCC27BB-A39C-4CB8-9EC7-01B7EE78ED36}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CDACFE6A-933B-44F4-9D1A-B7A011410376}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CDACFE6A-933B-44F4-9D1A-B7A011410376}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CDACFE6A-933B-44F4-9D1A-B7A011410376}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CDACFE6A-933B-44F4-9D1A-B7A011410376}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A222C7FC-5109-4322-82F4-DA71A09E2BF9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A222C7FC-5109-4322-82F4-DA71A09E2BF9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A222C7FC-5109-4322-82F4-DA71A09E2BF9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A222C7FC-5109-4322-82F4-DA71A09E2BF9}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
