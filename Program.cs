@@ -1,6 +1,9 @@
 using System.Text.Json;
+using KorrnellHelper.Api.Documents;
 using KorrnellHelper.Api.HealthChecks;
+using KorrnellHelper.Api.Security;
 using KorrnellHelper.Application.Ai;
+using KorrnellHelper.Application.Documents;
 using KorrnellHelper.Infrastructure.Ai;
 using KorrnellHelper.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -43,6 +46,16 @@ builder.Services
     .AddCheck<DocumentStoreHealthCheck>("supabase-document-store")
     .AddCheck<GeminiEmbeddingHealthCheck>("gemini-embedding");
 
+builder.Services
+    .AddOptions<IngestOptions>()
+    .Bind(builder.Configuration.GetSection(IngestOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<IDocumentChunkStore, DocumentChunkStore>();
+builder.Services.AddScoped<AddDocumentCommandHandler>();
+
 var app = builder.Build();
 
 // Apply schema.sql idempotently before accepting traffic — see SchemaInitializer for why
@@ -65,6 +78,21 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.MapPost("/api/documents", async (
+        AddDocumentRequest request,
+        AddDocumentCommandHandler handler,
+        CancellationToken cancellationToken) =>
+    {
+        var command = new AddDocumentCommand(
+            request.SourceDocument,
+            request.MarkdownContent,
+            request.SchoolYear,
+            request.PublishedDate);
+        var chunksCreated = await handler.HandleAsync(command, cancellationToken);
+        return Results.Created($"/api/documents/{Uri.EscapeDataString(request.SourceDocument)}", new { chunksCreated });
+    })
+    .AddEndpointFilter<ApiKeyAuthFilter>();
 
 var isDevelopment = app.Environment.IsDevelopment();
 app.MapHealthChecks("/health", new HealthCheckOptions
