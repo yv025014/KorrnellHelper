@@ -11,7 +11,10 @@ public sealed class GeminiOptions
 
     public string EmbeddingModel { get; set; } = "gemini-embedding-001";
 
-    public string GenerationModel { get; set; } = "gemini-2.0-flash";
+    // Pinned model versions get deprecated/quota-zeroed over time (confirmed live:
+    // "gemini-2.0-flash" returned a hard 0-quota 429 on the free tier) — the
+    // "-latest" alias tracks whatever the current recommended flash model is.
+    public string GenerationModel { get; set; } = "gemini-flash-latest";
 
     /// <summary>
     /// Must match the "vector(N)" dimension declared in schema.sql.

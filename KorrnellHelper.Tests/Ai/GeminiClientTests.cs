@@ -71,4 +71,18 @@ public class GeminiClientTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GenerateAsync("text"));
     }
+
+    [Fact]
+    public async Task NonSuccessStatusCode_ThrowsWithResponseBodyIncludedForDiagnosability()
+    {
+        var handler = new FakeHttpMessageHandler(
+            HttpStatusCode.TooManyRequests,
+            """{ "error": { "message": "Quota exceeded for quota metric ..." } }""");
+        var client = CreateClient(handler, out _);
+
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(() => client.EmbedAsync("text"));
+
+        Assert.Contains("429", exception.Message);
+        Assert.Contains("Quota exceeded", exception.Message);
+    }
 }

@@ -55,6 +55,8 @@ builder.Services
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IDocumentChunkStore, DocumentChunkStore>();
 builder.Services.AddScoped<AddDocumentCommandHandler>();
+builder.Services.AddScoped<IDocumentChunkSearcher, DocumentChunkSearcher>();
+builder.Services.AddScoped<AnswerQuestionQueryHandler>();
 
 var app = builder.Build();
 
@@ -91,6 +93,29 @@ app.MapPost("/api/documents", async (
             request.PublishedDate);
         var chunksCreated = await handler.HandleAsync(command, cancellationToken);
         return Results.Created($"/api/documents/{Uri.EscapeDataString(request.SourceDocument)}", new { chunksCreated });
+    })
+    .AddEndpointFilter<ApiKeyAuthFilter>();
+
+// Dev/verification surface for this ticket only — the LINE webhook (a later ticket) will call
+// AnswerQuestionQueryHandler in-process instead of round-tripping through this HTTP endpoint.
+app.MapPost("/api/questions", async (
+        AnswerQuestionRequest request,
+        AnswerQuestionQueryHandler handler,
+        CancellationToken cancellationToken) =>
+    {
+        // Gemini's embedContent API rejects empty input text (confirmed live while building
+        // Add Document) — reject here instead of letting that surface as an opaque 500.
+        if (string.IsNullOrWhiteSpace(request.Question))
+        {
+            return Results.BadRequest(new { error = "Question must not be empty." });
+        }
+
+        var result = await handler.HandleAsync(new AnswerQuestionQuery(request.Question), cancellationToken);
+        return Results.Ok(new
+        {
+            answer = result.Answer,
+            usedChunks = result.UsedChunks.Select(c => new { c.SourceDocument, c.Heading, c.SchoolYear, c.PublishedDate }),
+        });
     })
     .AddEndpointFilter<ApiKeyAuthFilter>();
 

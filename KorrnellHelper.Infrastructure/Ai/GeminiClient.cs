@@ -70,7 +70,15 @@ public sealed class GeminiClient(HttpClient httpClient, IOptions<GeminiOptions> 
         message.Headers.Add("x-goog-api-key", _options.ApiKey);
 
         var response = await httpClient.SendAsync(message, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new HttpRequestException(
+                $"Gemini API call to {requestUri} failed with {(int)response.StatusCode} {response.StatusCode}: {errorBody}",
+                inner: null,
+                response.StatusCode);
+        }
+
         return await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken);
     }
 }
