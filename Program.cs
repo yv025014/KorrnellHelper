@@ -1,12 +1,15 @@
 using System.Text.Json;
 using KorrnellHelper.Api.Documents;
 using KorrnellHelper.Api.HealthChecks;
+using KorrnellHelper.Api.Line;
 using KorrnellHelper.Api.Security;
 using KorrnellHelper.Application.Ai;
 using KorrnellHelper.Application.Documents;
 using KorrnellHelper.Infrastructure.Ai;
+using KorrnellHelper.Infrastructure.Line;
 using KorrnellHelper.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -57,6 +60,19 @@ builder.Services.AddScoped<IDocumentChunkStore, DocumentChunkStore>();
 builder.Services.AddScoped<AddDocumentCommandHandler>();
 builder.Services.AddScoped<IDocumentChunkSearcher, DocumentChunkSearcher>();
 builder.Services.AddScoped<AnswerQuestionQueryHandler>();
+
+builder.Services
+    .AddOptions<LineOptions>()
+    .Bind(builder.Configuration.GetSection(LineOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddHttpClient<LineReplyClient>(client =>
+{
+    client.BaseAddress = new Uri("https://api.line.me/v2/bot/");
+});
+builder.Services.AddScoped<ILineReplyClient>(sp => sp.GetRequiredService<LineReplyClient>());
+builder.Services.AddScoped<LineWebhookHandler>();
 
 var app = builder.Build();
 
@@ -118,6 +134,51 @@ app.MapPost("/api/questions", async (
         });
     })
     .AddEndpointFilter<ApiKeyAuthFilter>();
+
+app.MapPost("/webhook/line", async (
+    HttpContext context,
+    LineWebhookHandler handler,
+    IOptions<LineOptions> lineOptions,
+    ILogger<Program> logger,
+    CancellationToken cancellationToken) =>
+{
+    using var reader = new StreamReader(context.Request.Body);
+    var rawBody = await reader.ReadToEndAsync(cancellationToken);
+
+    var signature = context.Request.Headers["X-Line-Signature"].ToString();
+    if (!LineSignatureVerifier.IsValid(rawBody, signature, lineOptions.Value.ChannelSecret))
+    {
+        return Results.Unauthorized();
+    }
+
+    var payload = JsonSerializer.Deserialize<LineWebhookPayload>(rawBody);
+    foreach (var lineEvent in payload?.Events ?? [])
+    {
+        try
+        {
+            // Deliberately NOT the request's own token: the actual reply happens via a
+            // separate outbound call to LINE's Reply API, keyed by replyToken, not by this
+            // inbound HTTP connection staying open. If LINE (or the ngrok tunnel in front of
+            // it) gives up on this request before the Gemini calls finish, tying processing
+            // to context.RequestAborted would cancel the in-flight work and the reply would
+            // simply never be sent — confirmed live: this is exactly what happened before
+            // this fix (TaskCanceledException mid-GenerateAsync). A fresh, generously-bounded
+            // timeout per event still caps runaway work, just not on the inbound connection's
+            // terms.
+            using var eventTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await handler.HandleEventAsync(lineEvent, eventTimeout.Token);
+        }
+        catch (Exception ex)
+        {
+            // One event failing (e.g. a transient Gemini error) shouldn't fail the whole
+            // batch and make LINE retry-resend every event in it, including ones that
+            // already succeeded and got replied to.
+            logger.LogError(ex, "Failed to handle a LINE event.");
+        }
+    }
+
+    return Results.Ok();
+});
 
 var isDevelopment = app.Environment.IsDevelopment();
 app.MapHealthChecks("/health", new HealthCheckOptions

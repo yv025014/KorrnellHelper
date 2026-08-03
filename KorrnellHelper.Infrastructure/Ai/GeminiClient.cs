@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using KorrnellHelper.Application.Ai;
+using KorrnellHelper.Infrastructure.Http;
 using Microsoft.Extensions.Options;
 
 namespace KorrnellHelper.Infrastructure.Ai;
@@ -69,16 +70,7 @@ public sealed class GeminiClient(HttpClient httpClient, IOptions<GeminiOptions> 
         // request-logging middleware, proxy access logs, or Cloud Run's request logs.
         message.Headers.Add("x-goog-api-key", _options.ApiKey);
 
-        var response = await httpClient.SendAsync(message, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            throw new HttpRequestException(
-                $"Gemini API call to {requestUri} failed with {(int)response.StatusCode} {response.StatusCode}: {errorBody}",
-                inner: null,
-                response.StatusCode);
-        }
-
+        var response = await httpClient.SendAndEnsureSuccessAsync(message, "Gemini API", cancellationToken);
         return await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken);
     }
 }

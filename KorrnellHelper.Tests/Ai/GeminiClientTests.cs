@@ -1,5 +1,6 @@
 using System.Net;
 using KorrnellHelper.Infrastructure.Ai;
+using KorrnellHelper.Tests.TestSupport;
 using Microsoft.Extensions.Options;
 using Xunit;
 

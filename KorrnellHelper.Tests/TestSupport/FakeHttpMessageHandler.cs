@@ -1,10 +1,12 @@
 using System.Net;
 
-namespace KorrnellHelper.Tests.Ai;
+namespace KorrnellHelper.Tests.TestSupport;
 
 /// <summary>
 /// Returns a fixed response for every request, and records the last request
-/// so tests can assert on the URL/body that was sent.
+/// so tests can assert on the URL/body that was sent. Shared by any test
+/// that exercises a thin HttpClient-based wrapper over a third-party API
+/// (GeminiClient, LineReplyClient).
 /// </summary>
 public sealed class FakeHttpMessageHandler(HttpStatusCode statusCode, string responseBody) : HttpMessageHandler
 {
