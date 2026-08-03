@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+.git/
+.gitignore
+.env.local
+.claude/
+.vs/
+.idea/
+KorrnellHelper.Tests/
+spec/
+*.md

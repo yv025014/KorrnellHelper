@@ -91,8 +91,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
-
+// No UseHttpsRedirection(): Cloud Run terminates TLS at the platform edge and forwards
+// plain HTTP to the container, so the app never sees an "http" request to redirect from
+// in production — adding this middleware would just risk a bogus redirect loop. Cloud
+// Run's own *.run.app domain already refuses plain HTTP at the edge.
 app.UseAuthorization();
 
 app.MapControllers();
