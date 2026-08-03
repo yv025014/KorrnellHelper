@@ -1,4 +1,5 @@
 using KorrnellHelper.Application.Documents;
+using KorrnellHelper.Application.Line;
 using KorrnellHelper.Infrastructure.Line;
 using Microsoft.Extensions.Options;
 
@@ -6,10 +7,14 @@ namespace KorrnellHelper.Api.Line;
 
 public sealed class LineWebhookHandler(
     AnswerQuestionQueryHandler answerHandler,
+    AddAllowedUserCommandHandler addAllowedUserHandler,
+    IAllowedUserStore allowedUserStore,
     ILineReplyClient replyClient,
     IOptions<LineOptions> lineOptions,
     ILogger<LineWebhookHandler> logger)
 {
+    private const string AddUserCommandPrefix = "#AddUser=";
+
     public async Task HandleEventAsync(LineEvent lineEvent, CancellationToken cancellationToken = default)
     {
         if (lineEvent.Type != "message" || lineEvent.Message?.Type != "text")
@@ -23,8 +28,8 @@ public sealed class LineWebhookHandler(
             return;
         }
 
-        // Logged regardless of whitelist outcome — this is how you find your own
-        // LINE User ID to add to the whitelist in the first place.
+        // Logged regardless of outcome — this is how you find your own LINE User ID to
+        // give to an admin in the first place.
         logger.LogInformation("Received LINE message from user {UserId}", userId);
 
         if (lineEvent.ReplyToken is null)
@@ -32,11 +37,23 @@ public sealed class LineWebhookHandler(
             return;
         }
 
-        if (!lineOptions.Value.IsUserAllowed(userId))
+        var text = lineEvent.Message.Text ?? string.Empty;
+        var isAdmin = lineOptions.Value.IsAdmin(userId);
+
+        // Only an admin's message is ever interpreted as this command — from anyone else,
+        // literal "#AddUser=..." text is just an ordinary (if odd) question.
+        if (isAdmin && text.StartsWith(AddUserCommandPrefix, StringComparison.Ordinal))
+        {
+            await HandleAddUserCommandAsync(userId, text, lineEvent.ReplyToken, cancellationToken);
+            return;
+        }
+
+        var isAllowed = isAdmin || await allowedUserStore.IsAllowedAsync(userId, cancellationToken);
+        if (!isAllowed)
         {
             logger.LogInformation("Denying message from non-whitelisted user {UserId}", userId);
             // Reply with their own ID (not silence) — otherwise there's no way for someone
-            // other than the admin to find their own ID and ask to be added to the whitelist.
+            // other than an admin to find their own ID and ask to be added to the whitelist.
             await replyClient.ReplyAsync(
                 lineEvent.ReplyToken,
                 $"很抱歉，這個小幫手目前僅限受邀請的使用者使用。\n\n如需申請使用權限，請將以下 ID 提供給管理員：\n{userId}",
@@ -44,13 +61,34 @@ public sealed class LineWebhookHandler(
             return;
         }
 
-        var question = lineEvent.Message.Text;
-        if (string.IsNullOrWhiteSpace(question))
+        if (string.IsNullOrWhiteSpace(text))
         {
             return;
         }
 
-        var result = await answerHandler.HandleAsync(new AnswerQuestionQuery(question), cancellationToken);
+        var result = await answerHandler.HandleAsync(new AnswerQuestionQuery(text), cancellationToken);
         await replyClient.ReplyAsync(lineEvent.ReplyToken, result.Answer, cancellationToken);
+    }
+
+    private async Task HandleAddUserCommandAsync(
+        string adminUserId, string text, string replyToken, CancellationToken cancellationToken)
+    {
+        var targetUserId = text[AddUserCommandPrefix.Length..].Trim();
+        var command = new AddAllowedUserCommand(targetUserId, adminUserId);
+        var result = await addAllowedUserHandler.HandleAsync(command, cancellationToken);
+
+        var message = result.Outcome switch
+        {
+            AddAllowedUserOutcome.Added =>
+                $"已將 {targetUserId} 加入白名單，對方現在可以直接傳訊息問問題了。",
+            AddAllowedUserOutcome.AlreadyExists =>
+                $"{targetUserId} 已經在白名單裡了，不需要重複新增。",
+            AddAllowedUserOutcome.InvalidFormat => targetUserId.Length == 0
+                ? "格式不正確，請照這個格式傳送：#AddUser=U開頭加32碼小寫英數字（= 後面不能是空的）。"
+                : $"格式不正確，LINE User ID 應該是 U 開頭加 32 碼小寫英數字。收到的是：{targetUserId}",
+            _ => throw new InvalidOperationException($"Unhandled AddAllowedUserOutcome: {result.Outcome}"),
+        };
+
+        await replyClient.ReplyAsync(replyToken, message, cancellationToken);
     }
 }

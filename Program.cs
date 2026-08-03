@@ -5,6 +5,7 @@ using KorrnellHelper.Api.Line;
 using KorrnellHelper.Api.Security;
 using KorrnellHelper.Application.Ai;
 using KorrnellHelper.Application.Documents;
+using KorrnellHelper.Application.Line;
 using KorrnellHelper.Infrastructure.Ai;
 using KorrnellHelper.Infrastructure.Line;
 using KorrnellHelper.Infrastructure.Persistence;
@@ -72,6 +73,8 @@ builder.Services.AddHttpClient<LineReplyClient>(client =>
     client.BaseAddress = new Uri("https://api.line.me/v2/bot/");
 });
 builder.Services.AddScoped<ILineReplyClient>(sp => sp.GetRequiredService<LineReplyClient>());
+builder.Services.AddScoped<IAllowedUserStore, AllowedUserStore>();
+builder.Services.AddScoped<AddAllowedUserCommandHandler>();
 builder.Services.AddScoped<LineWebhookHandler>();
 
 var app = builder.Build();

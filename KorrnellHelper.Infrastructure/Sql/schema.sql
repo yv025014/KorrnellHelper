@@ -16,3 +16,11 @@ create table if not exists document_chunks (
 
 create index if not exists document_chunks_embedding_idx
     on document_chunks using hnsw (embedding vector_cosine_ops);
+
+-- Whitelist entries added at runtime via the LINE "#AddUser=" command, in addition
+-- to the static admin(s) configured via the Line:AllowedUserIds environment variable.
+create table if not exists allowed_line_users (
+    line_user_id text primary key,
+    added_by text not null,
+    added_at timestamptz not null default now()
+);

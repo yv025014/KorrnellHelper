@@ -13,20 +13,23 @@ public sealed class LineOptions
     public required string ChannelAccessToken { get; set; }
 
     /// <summary>
-    /// Comma-separated LINE user IDs allowed to talk to the bot — set via an
-    /// environment variable/user-secret, never hardcoded. Empty by default,
-    /// which means nobody is authorized until this is explicitly configured.
+    /// Comma-separated LINE user IDs treated as admins — set via an environment
+    /// variable/user-secret, never hardcoded. Empty by default, which means nobody
+    /// is an admin until this is explicitly configured. Admins can always ask
+    /// questions AND are the only ones who can run the "#AddUser=" command; everyone
+    /// else's access is looked up from the allowed_line_users table instead (see
+    /// IAllowedUserStore), so growing the whitelist doesn't require a restart.
     /// </summary>
     public string AllowedUserIds { get; set; } = string.Empty;
 
-    private HashSet<string>? _allowedUserIdSet;
+    private HashSet<string>? _adminUserIdSet;
 
-    public bool IsUserAllowed(string userId)
+    public bool IsAdmin(string userId)
     {
-        _allowedUserIdSet ??= AllowedUserIds
+        _adminUserIdSet ??= AllowedUserIds
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToHashSet(StringComparer.Ordinal);
 
-        return _allowedUserIdSet.Contains(userId);
+        return _adminUserIdSet.Contains(userId);
     }
 }
