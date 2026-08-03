@@ -27,8 +27,8 @@ Read `.env.local` at the project root for two values:
   tell the user to add it (this is the same key set on the backend via
   `dotnet user-secrets set "Ingest:ApiKey" ...`).
 - `KORRNELL_API_BASE_URL` — the backend's base URL. If missing, default to
-  `http://localhost:5299` (the local dev server) and mention that default to
-  the user, since it'll need to change once the backend is deployed.
+  `https://korrnellhelper-7953653332.asia-east1.run.app` (the production
+  Cloud Run service) and mention that default to the user.
 
 ## Steps, for each file
 
