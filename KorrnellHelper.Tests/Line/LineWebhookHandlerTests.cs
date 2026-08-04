@@ -281,6 +281,21 @@ public class LineWebhookHandlerTests
     }
 
     [Fact]
+    public async Task HandleEventAsync_AdminSendsTestReminderCommand_WithStrayLeadingSpace_StillMatches()
+    {
+        // Confirmed live: a mobile keyboard can prepend a stray space, which silently broke
+        // the exact-match check before `text` was trimmed up front.
+        var (handler, replyClient, answerGenerator, _, reminderAnswerGenerator) = CreateHandler();
+        reminderAnswerGenerator.ResponseToReturn = "1. 課後才藝選課(8/13～8/17)\n• 辦理事項：線上選課";
+
+        await handler.HandleEventAsync(TextMessageFrom(AdminUserId, " #TestReminder"));
+
+        Assert.Equal(1, reminderAnswerGenerator.CallCount);
+        Assert.Equal(0, answerGenerator.CallCount);
+        Assert.Contains("課後才藝選課", replyClient.LastText);
+    }
+
+    [Fact]
     public async Task HandleEventAsync_NonAdminSendsTestReminderLookingText_TreatedAsAnOrdinaryQuestion()
     {
         var (handler, replyClient, answerGenerator, _, reminderAnswerGenerator) = CreateHandler();

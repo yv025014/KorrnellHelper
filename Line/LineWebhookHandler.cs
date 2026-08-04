@@ -42,7 +42,9 @@ public sealed class LineWebhookHandler(
             return;
         }
 
-        var text = lineEvent.Message.Text ?? string.Empty;
+        // Trimmed once up front — a stray leading/trailing space (common from mobile keyboards)
+        // would otherwise silently break every exact/prefix command match below.
+        var text = (lineEvent.Message.Text ?? string.Empty).Trim();
         var isAdmin = lineOptions.Value.IsAdmin(userId);
 
         // Only an admin's message is ever interpreted as this command — from anyone else,
