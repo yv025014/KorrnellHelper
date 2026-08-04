@@ -126,6 +126,32 @@ public class AnswerQuestionQueryHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_ReturnsGeneratedAnswerUnmodified_NoChannelSpecificPostProcessing()
+    {
+        var chunk = MakeChunk("服裝儀容", "請穿便服");
+        var answerGenerator = new FakeAnswerGenerator { ResponseToReturn = "## 開學要穿便服喔\n**請注意**" };
+        var handler = new AnswerQuestionQueryHandler(
+            new FakeEmbeddingGenerator(), new FakeSearcher([chunk]), answerGenerator);
+
+        var result = await handler.HandleAsync(new AnswerQuestionQuery("開學要穿什麼?"));
+
+        Assert.Equal("## 開學要穿便服喔\n**請注意**", result.Answer);
+    }
+
+    [Fact]
+    public async Task HandleAsync_PromptContainsNoChannelSpecificInstructions()
+    {
+        var answerGenerator = new FakeAnswerGenerator();
+        var handler = new AnswerQuestionQueryHandler(
+            new FakeEmbeddingGenerator(), new FakeSearcher([MakeChunk("服裝儀容", "請穿便服")]), answerGenerator);
+
+        await handler.HandleAsync(new AnswerQuestionQuery("開學要穿什麼?"));
+
+        Assert.DoesNotContain("LINE", answerGenerator.LastPrompt);
+        Assert.DoesNotContain("Markdown", answerGenerator.LastPrompt);
+    }
+
+    [Fact]
     public async Task HandleAsync_NoSearchResults_ReturnsFallbackWithoutCallingGenerate()
     {
         var answerGenerator = new FakeAnswerGenerator();

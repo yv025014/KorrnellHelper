@@ -11,7 +11,7 @@ public sealed class LineWebhookHandler(
     IAllowedUserStore allowedUserStore,
     ILineReplyClient replyClient,
     IOptions<LineOptions> lineOptions,
-    ILogger<LineWebhookHandler> logger)
+    ILogger<LineWebhookHandler> logger) : ILineWebhookHandler
 {
     private const string AddUserCommandPrefix = "#AddUser=";
 
@@ -69,7 +69,7 @@ public sealed class LineWebhookHandler(
         try
         {
             var result = await answerHandler.HandleAsync(new AnswerQuestionQuery(text), cancellationToken);
-            answer = result.Answer;
+            answer = LineAnswerFormatter.Format(result.Answer);
         }
         catch (Exception ex)
         {

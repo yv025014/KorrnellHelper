@@ -127,6 +127,21 @@ public class LineWebhookHandlerTests
     }
 
     [Fact]
+    public async Task HandleEventAsync_GeneratedAnswerContainsMarkdown_RepliesWithLineFormattedText()
+    {
+        var (handler, replyClient, answerGenerator, _) = CreateHandler();
+        answerGenerator.ResponseToReturn = "## 開學日\n**8/31** 星期一\n- 帶文具\n- 帶課本";
+
+        await handler.HandleEventAsync(TextMessageFrom(AdminUserId, "開學日是幾號?"));
+
+        Assert.Equal(1, replyClient.CallCount);
+        Assert.DoesNotContain("##", replyClient.LastText);
+        Assert.DoesNotContain("**", replyClient.LastText);
+        Assert.Contains("開學日", replyClient.LastText);
+        Assert.Contains("• 帶文具", replyClient.LastText);
+    }
+
+    [Fact]
     public async Task HandleEventAsync_UserAddedViaDbStore_TreatedAsAllowed_RepliesWithGeneratedAnswer()
     {
         var (handler, replyClient, answerGenerator, _) = CreateHandler();
