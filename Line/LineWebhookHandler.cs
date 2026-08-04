@@ -66,8 +66,21 @@ public sealed class LineWebhookHandler(
             return;
         }
 
-        var result = await answerHandler.HandleAsync(new AnswerQuestionQuery(text), cancellationToken);
-        await replyClient.ReplyAsync(lineEvent.ReplyToken, result.Answer, cancellationToken);
+        string answer;
+        try
+        {
+            var result = await answerHandler.HandleAsync(new AnswerQuestionQuery(text), cancellationToken);
+            answer = result.Answer;
+        }
+        catch (Exception ex)
+        {
+            // Without this, a failure here (e.g. the AI provider rate-limiting or timing out)
+            // leaves the user with a "read" message and no reply at all.
+            logger.LogError(ex, "Failed to answer question from user {UserId}", userId);
+            answer = "系統忙碌中，請稍後再試";
+        }
+
+        await replyClient.ReplyAsync(lineEvent.ReplyToken, answer, cancellationToken);
     }
 
     private async Task HandleAddUserCommandAsync(
