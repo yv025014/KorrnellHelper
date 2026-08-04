@@ -16,4 +16,10 @@ public sealed class FakeAllowedUserStore : IAllowedUserStore
         LastAddedBy = addedByUserId;
         return Task.FromResult(Users.Add(userId));
     }
+
+    public Task<bool> RemoveAsync(string userId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Users.Remove(userId));
+
+    public Task<IReadOnlyList<string>> GetAllUserIdsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<string>>(Users.ToList());
 }

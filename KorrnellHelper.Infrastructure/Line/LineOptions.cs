@@ -23,6 +23,7 @@ public sealed class LineOptions
     public string AllowedUserIds { get; set; } = string.Empty;
 
     private HashSet<string>? _adminUserIdSet;
+    private string[]? _adminUserIdList;
 
     public bool IsAdmin(string userId)
     {
@@ -31,5 +32,21 @@ public sealed class LineOptions
             .ToHashSet(StringComparer.Ordinal);
 
         return _adminUserIdSet.Contains(userId);
+    }
+
+    /// <summary>
+    /// The admin who receives reminder-schedule failure alerts. Real usage today configures
+    /// exactly one admin; if multiple are ever configured, only the first receives alerts —
+    /// an accepted simplification, not a guarantee every admin is notified.
+    /// </summary>
+    public string? PrimaryAdminUserId
+    {
+        get
+        {
+            _adminUserIdList ??= AllowedUserIds
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            return _adminUserIdList.Length > 0 ? _adminUserIdList[0] : null;
+        }
     }
 }

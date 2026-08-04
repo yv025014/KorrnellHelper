@@ -1,4 +1,3 @@
-using System.Text;
 using KorrnellHelper.Application.Ai;
 using KorrnellHelper.Domain.Documents;
 
@@ -37,17 +36,7 @@ public sealed class AnswerQuestionQueryHandler(
 
     private static string BuildPrompt(string question, IReadOnlyList<DocumentChunk> chunks)
     {
-        var context = new StringBuilder();
-        for (var i = 0; i < chunks.Count; i++)
-        {
-            var chunk = chunks[i];
-            context.AppendLine(
-                chunk.Heading is not null
-                    ? $"[參考資料 {i + 1}](主題:{chunk.Heading})"
-                    : $"[參考資料 {i + 1}]");
-            context.AppendLine(chunk.Content);
-            context.AppendLine();
-        }
+        var context = DocumentChunkPromptFormatter.FormatAsContext(chunks);
 
         return $"""
             你是「康乃爾小幫手」,協助家長理解學校發出的通知單內容。請只根據下方提供的參考資料回答問題,不要編造參考資料中沒有的資訊;如果參考資料不足以回答,請明確說明無法從現有資料中找到答案,而不是用其他知識作答。

@@ -1,5 +1,6 @@
 using KorrnellHelper.Application.Documents;
 using KorrnellHelper.Application.Line;
+using KorrnellHelper.Application.Reminders;
 using KorrnellHelper.Infrastructure.Line;
 using Microsoft.Extensions.Options;
 
@@ -8,12 +9,16 @@ namespace KorrnellHelper.Api.Line;
 public sealed class LineWebhookHandler(
     AnswerQuestionQueryHandler answerHandler,
     AddAllowedUserCommandHandler addAllowedUserHandler,
+    RemoveAllowedUserCommandHandler removeAllowedUserHandler,
+    GenerateReminderDigestQueryHandler reminderDigestHandler,
     IAllowedUserStore allowedUserStore,
     ILineReplyClient replyClient,
     IOptions<LineOptions> lineOptions,
     ILogger<LineWebhookHandler> logger) : ILineWebhookHandler
 {
     private const string AddUserCommandPrefix = "#AddUser=";
+    private const string RemoveUserCommandPrefix = "#RemoveUser=";
+    private const string TestReminderCommand = "#TestReminder";
 
     public async Task HandleEventAsync(LineEvent lineEvent, CancellationToken cancellationToken = default)
     {
@@ -45,6 +50,21 @@ public sealed class LineWebhookHandler(
         if (isAdmin && text.StartsWith(AddUserCommandPrefix, StringComparison.Ordinal))
         {
             await HandleAddUserCommandAsync(userId, text, lineEvent.ReplyToken, cancellationToken);
+            return;
+        }
+
+        if (isAdmin && text.StartsWith(RemoveUserCommandPrefix, StringComparison.Ordinal))
+        {
+            await HandleRemoveUserCommandAsync(text, lineEvent.ReplyToken, cancellationToken);
+            return;
+        }
+
+        // Only an admin's exact "#TestReminder" is ever interpreted as this command — it runs
+        // the same digest logic the scheduled push uses, but replies (never pushes) so repeated
+        // testing after uploading a new notice never touches the monthly push message quota.
+        if (isAdmin && text == TestReminderCommand)
+        {
+            await HandleTestReminderCommandAsync(lineEvent.ReplyToken, cancellationToken);
             return;
         }
 
@@ -91,6 +111,33 @@ public sealed class LineWebhookHandler(
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await replyClient.ReplyAsync(replyToken, text, cts.Token);
+    }
+
+    private async Task HandleRemoveUserCommandAsync(string text, string replyToken, CancellationToken cancellationToken)
+    {
+        var targetUserId = text[RemoveUserCommandPrefix.Length..].Trim();
+        var command = new RemoveAllowedUserCommand(targetUserId);
+        var result = await removeAllowedUserHandler.HandleAsync(command, cancellationToken);
+
+        var message = result.Outcome switch
+        {
+            RemoveAllowedUserOutcome.Removed =>
+                $"已將 {targetUserId} 從白名單移除，對方之後傳訊息將不再被回應。",
+            RemoveAllowedUserOutcome.NotFound =>
+                $"{targetUserId} 原本就不在白名單裡，不需要移除。",
+            RemoveAllowedUserOutcome.InvalidFormat => targetUserId.Length == 0
+                ? "格式不正確，請照這個格式傳送：#RemoveUser=U開頭加32碼小寫英數字（= 後面不能是空的）。"
+                : $"格式不正確，LINE User ID 應該是 U 開頭加 32 碼小寫英數字。收到的是：{targetUserId}",
+            _ => throw new InvalidOperationException($"Unhandled RemoveAllowedUserOutcome: {result.Outcome}"),
+        };
+
+        await SendReplyAsync(replyToken, message);
+    }
+
+    private async Task HandleTestReminderCommandAsync(string replyToken, CancellationToken cancellationToken)
+    {
+        var result = await reminderDigestHandler.HandleAsync(cancellationToken);
+        await SendReplyAsync(replyToken, result.DigestText);
     }
 
     private async Task HandleAddUserCommandAsync(

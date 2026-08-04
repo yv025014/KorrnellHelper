@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace KorrnellHelper.Api.Line;
+namespace KorrnellHelper.Application.Line;
 
 /// <summary>
 /// Converts a generated answer into LINE-friendly plain text. LINE renders plain text only,

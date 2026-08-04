@@ -28,6 +28,9 @@ public class AddDocumentCommandHandlerTests
             SavedChunks = chunks;
             return Task.CompletedTask;
         }
+
+        public Task<IReadOnlyList<DocumentChunk>> GetAllAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("Not exercised by AddDocumentCommandHandler.");
     }
 
     private const string TwoSectionMarkdown = """

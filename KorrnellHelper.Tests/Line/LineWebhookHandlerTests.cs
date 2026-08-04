@@ -2,6 +2,7 @@ using KorrnellHelper.Api.Line;
 using KorrnellHelper.Application.Ai;
 using KorrnellHelper.Application.Documents;
 using KorrnellHelper.Application.Line;
+using KorrnellHelper.Application.Reminders;
 using KorrnellHelper.Domain.Documents;
 using KorrnellHelper.Infrastructure.Line;
 using KorrnellHelper.Tests.TestSupport;
@@ -67,7 +68,8 @@ public class LineWebhookHandlerTests
         LineWebhookHandler Handler,
         FakeLineReplyClient ReplyClient,
         FakeAnswerGenerator AnswerGenerator,
-        FakeAllowedUserStore AllowedUserStore)
+        FakeAllowedUserStore AllowedUserStore,
+        FakeAnswerGenerator ReminderAnswerGenerator)
         CreateHandler()
     {
         var chunk = new DocumentChunk
@@ -88,6 +90,12 @@ public class LineWebhookHandlerTests
         var allowedUserStore = new FakeAllowedUserStore();
         allowedUserStore.Users.Add(DbAllowedUserId);
         var addAllowedUserHandler = new AddAllowedUserCommandHandler(allowedUserStore);
+        var removeAllowedUserHandler = new RemoveAllowedUserCommandHandler(allowedUserStore);
+        // Separate fake from `answerGenerator` above so reminder-digest tests never get
+        // conflated with the ordinary Q&A flow's call count/prompt assertions.
+        var reminderAnswerGenerator = new FakeAnswerGenerator();
+        var reminderDigestHandler = new GenerateReminderDigestQueryHandler(
+            new FakeDocumentChunkStore([chunk]), reminderAnswerGenerator, TimeProvider.System);
         var lineOptions = Options.Create(new LineOptions
         {
             ChannelSecret = "secret",
@@ -98,12 +106,14 @@ public class LineWebhookHandlerTests
         var handler = new LineWebhookHandler(
             answerHandler,
             addAllowedUserHandler,
+            removeAllowedUserHandler,
+            reminderDigestHandler,
             allowedUserStore,
             replyClient,
             lineOptions,
             NullLogger<LineWebhookHandler>.Instance);
 
-        return (handler, replyClient, answerGenerator, allowedUserStore);
+        return (handler, replyClient, answerGenerator, allowedUserStore, reminderAnswerGenerator);
     }
 
     private static LineEvent TextMessageFrom(string userId, string text) => new()
@@ -117,7 +127,7 @@ public class LineWebhookHandlerTests
     [Fact]
     public async Task HandleEventAsync_AdminUser_TextMessage_RepliesWithGeneratedAnswer()
     {
-        var (handler, replyClient, answerGenerator, _) = CreateHandler();
+        var (handler, replyClient, answerGenerator, _, _) = CreateHandler();
         answerGenerator.ResponseToReturn = "開學是8/31喔";
 
         await handler.HandleEventAsync(TextMessageFrom(AdminUserId, "開學日是幾號?"));
@@ -129,7 +139,7 @@ public class LineWebhookHandlerTests
     [Fact]
     public async Task HandleEventAsync_GeneratedAnswerContainsMarkdown_RepliesWithLineFormattedText()
     {
-        var (handler, replyClient, answerGenerator, _) = CreateHandler();
+        var (handler, replyClient, answerGenerator, _, _) = CreateHandler();
         answerGenerator.ResponseToReturn = "## 開學日\n**8/31** 星期一\n- 帶文具\n- 帶課本";
 
         await handler.HandleEventAsync(TextMessageFrom(AdminUserId, "開學日是幾號?"));
@@ -144,7 +154,7 @@ public class LineWebhookHandlerTests
     [Fact]
     public async Task HandleEventAsync_UserAddedViaDbStore_TreatedAsAllowed_RepliesWithGeneratedAnswer()
     {
-        var (handler, replyClient, answerGenerator, _) = CreateHandler();
+        var (handler, replyClient, answerGenerator, _, _) = CreateHandler();
         answerGenerator.ResponseToReturn = "開學是8/31喔";
 
         await handler.HandleEventAsync(TextMessageFrom(DbAllowedUserId, "開學日是幾號?"));
@@ -158,7 +168,7 @@ public class LineWebhookHandlerTests
     {
         // Without this, a family member has no way to find their own LINE User ID to
         // give the admin — confirmed as a real onboarding gap during live testing.
-        var (handler, replyClient, answerGenerator, _) = CreateHandler();
+        var (handler, replyClient, answerGenerator, _, _) = CreateHandler();
 
         await handler.HandleEventAsync(TextMessageFrom(DisallowedUserId, "開學日是幾號?"));
 
@@ -170,7 +180,7 @@ public class LineWebhookHandlerTests
     [Fact]
     public async Task HandleEventAsync_AdminSendsAddUserCommand_ValidId_AddsToStoreAndConfirms()
     {
-        var (handler, replyClient, answerGenerator, store) = CreateHandler();
+        var (handler, replyClient, answerGenerator, store, _) = CreateHandler();
 
         await handler.HandleEventAsync(TextMessageFrom(AdminUserId, $"#AddUser={NewUserToAddId}"));
 
@@ -184,7 +194,7 @@ public class LineWebhookHandlerTests
     [Fact]
     public async Task HandleEventAsync_AdminSendsAddUserCommand_AlreadyAdded_RepliesWithoutError()
     {
-        var (handler, replyClient, _, store) = CreateHandler();
+        var (handler, replyClient, _, store, _) = CreateHandler();
         store.Users.Add(NewUserToAddId);
 
         await handler.HandleEventAsync(TextMessageFrom(AdminUserId, $"#AddUser={NewUserToAddId}"));
@@ -196,7 +206,7 @@ public class LineWebhookHandlerTests
     [Fact]
     public async Task HandleEventAsync_AdminSendsAddUserCommand_MalformedId_RepliesWithFormatErrorAndDoesNotAdd()
     {
-        var (handler, replyClient, _, store) = CreateHandler();
+        var (handler, replyClient, _, store, _) = CreateHandler();
 
         await handler.HandleEventAsync(TextMessageFrom(AdminUserId, "#AddUser=not-a-real-id"));
 
@@ -206,9 +216,89 @@ public class LineWebhookHandlerTests
     }
 
     [Fact]
+    public async Task HandleEventAsync_AdminSendsRemoveUserCommand_ExistingId_RemovesFromStoreAndConfirms()
+    {
+        var (handler, replyClient, _, store, _) = CreateHandler();
+        store.Users.Add(NewUserToAddId);
+
+        await handler.HandleEventAsync(TextMessageFrom(AdminUserId, $"#RemoveUser={NewUserToAddId}"));
+
+        Assert.DoesNotContain(NewUserToAddId, store.Users);
+        Assert.Equal(1, replyClient.CallCount);
+        Assert.Contains(NewUserToAddId, replyClient.LastText);
+    }
+
+    [Fact]
+    public async Task HandleEventAsync_AdminSendsRemoveUserCommand_NotInStore_RepliesWithoutError()
+    {
+        var (handler, replyClient, _, store, _) = CreateHandler();
+
+        await handler.HandleEventAsync(TextMessageFrom(AdminUserId, $"#RemoveUser={NewUserToAddId}"));
+
+        Assert.Equal(1, replyClient.CallCount);
+        Assert.Contains(NewUserToAddId, replyClient.LastText);
+    }
+
+    [Fact]
+    public async Task HandleEventAsync_AdminSendsRemoveUserCommand_MalformedId_RepliesWithFormatErrorAndDoesNotRemove()
+    {
+        var (handler, replyClient, _, store, _) = CreateHandler();
+        store.Users.Add(DbAllowedUserId);
+
+        await handler.HandleEventAsync(TextMessageFrom(AdminUserId, "#RemoveUser=not-a-real-id"));
+
+        Assert.Contains(DbAllowedUserId, store.Users); // untouched
+        Assert.Equal(1, replyClient.CallCount);
+        Assert.Contains("not-a-real-id", replyClient.LastText);
+    }
+
+    [Fact]
+    public async Task HandleEventAsync_NonAdminSendsRemoveUserLookingText_TreatedAsAnOrdinaryQuestion()
+    {
+        var (handler, replyClient, answerGenerator, store, _) = CreateHandler();
+        store.Users.Add(DbAllowedUserId);
+        answerGenerator.ResponseToReturn = "answer";
+
+        await handler.HandleEventAsync(TextMessageFrom(DbAllowedUserId, $"#RemoveUser={DbAllowedUserId}"));
+
+        Assert.Contains(DbAllowedUserId, store.Users); // not removed — sender isn't admin
+        Assert.Equal(1, answerGenerator.CallCount);
+        Assert.Equal("answer", replyClient.LastText);
+    }
+
+    [Fact]
+    public async Task HandleEventAsync_AdminSendsTestReminderCommand_RepliesWithDigestAndNeverCallsTheAnswerGenerator()
+    {
+        var (handler, replyClient, answerGenerator, _, reminderAnswerGenerator) = CreateHandler();
+        reminderAnswerGenerator.ResponseToReturn = "1. 課後才藝選課(8/13～8/17)\n• 辦理事項：線上選課";
+
+        await handler.HandleEventAsync(TextMessageFrom(AdminUserId, "#TestReminder"));
+
+        Assert.Equal(1, replyClient.CallCount);
+        Assert.Contains("課後才藝選課", replyClient.LastText);
+        Assert.Equal(1, reminderAnswerGenerator.CallCount);
+        Assert.Equal(0, answerGenerator.CallCount); // never treated as a question
+    }
+
+    [Fact]
+    public async Task HandleEventAsync_NonAdminSendsTestReminderLookingText_TreatedAsAnOrdinaryQuestion()
+    {
+        var (handler, replyClient, answerGenerator, _, reminderAnswerGenerator) = CreateHandler();
+        // DbAllowedUserId is allowed to ask questions, but is not an admin — "#TestReminder"
+        // must only be special-cased for admins.
+        answerGenerator.ResponseToReturn = "answer";
+
+        await handler.HandleEventAsync(TextMessageFrom(DbAllowedUserId, "#TestReminder"));
+
+        Assert.Equal(0, reminderAnswerGenerator.CallCount);
+        Assert.Equal(1, answerGenerator.CallCount);
+        Assert.Equal("answer", replyClient.LastText);
+    }
+
+    [Fact]
     public async Task HandleEventAsync_NonAdminSendsAddUserLookingText_TreatedAsAnOrdinaryQuestion()
     {
-        var (handler, replyClient, answerGenerator, store) = CreateHandler();
+        var (handler, replyClient, answerGenerator, store, _) = CreateHandler();
         // DbAllowedUserId is allowed to ask questions, but is not an admin — the
         // "#AddUser=" prefix must only be special-cased for admins.
         answerGenerator.ResponseToReturn = "answer";
@@ -224,7 +314,7 @@ public class LineWebhookHandlerTests
     [Fact]
     public async Task HandleEventAsync_NonMessageEvent_IsIgnored()
     {
-        var (handler, replyClient, _, _) = CreateHandler();
+        var (handler, replyClient, _, _, _) = CreateHandler();
         var lineEvent = new LineEvent
         {
             Type = "follow",
@@ -240,7 +330,7 @@ public class LineWebhookHandlerTests
     [Fact]
     public async Task HandleEventAsync_NonTextMessage_IsIgnored()
     {
-        var (handler, replyClient, _, _) = CreateHandler();
+        var (handler, replyClient, _, _, _) = CreateHandler();
         var lineEvent = new LineEvent
         {
             Type = "message",
@@ -257,7 +347,7 @@ public class LineWebhookHandlerTests
     [Fact]
     public async Task HandleEventAsync_MissingUserId_NeverReplies()
     {
-        var (handler, replyClient, _, _) = CreateHandler();
+        var (handler, replyClient, _, _, _) = CreateHandler();
         var lineEvent = new LineEvent
         {
             Type = "message",

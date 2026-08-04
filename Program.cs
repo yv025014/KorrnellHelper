@@ -6,6 +6,7 @@ using KorrnellHelper.Api.Security;
 using KorrnellHelper.Application.Ai;
 using KorrnellHelper.Application.Documents;
 using KorrnellHelper.Application.Line;
+using KorrnellHelper.Application.Reminders;
 using KorrnellHelper.Infrastructure.Ai;
 using KorrnellHelper.Infrastructure.Line;
 using KorrnellHelper.Infrastructure.Persistence;
@@ -61,6 +62,7 @@ builder.Services.AddScoped<IDocumentChunkStore, DocumentChunkStore>();
 builder.Services.AddScoped<AddDocumentCommandHandler>();
 builder.Services.AddScoped<IDocumentChunkSearcher, DocumentChunkSearcher>();
 builder.Services.AddScoped<AnswerQuestionQueryHandler>();
+builder.Services.AddScoped<GenerateReminderDigestQueryHandler>();
 
 builder.Services
     .AddOptions<LineOptions>()
@@ -73,8 +75,15 @@ builder.Services.AddHttpClient<LineReplyClient>(client =>
     client.BaseAddress = new Uri("https://api.line.me/v2/bot/");
 });
 builder.Services.AddScoped<ILineReplyClient>(sp => sp.GetRequiredService<LineReplyClient>());
+builder.Services.AddHttpClient<LinePushClient>(client =>
+{
+    client.BaseAddress = new Uri("https://api.line.me/v2/bot/");
+});
+builder.Services.AddScoped<ILinePushClient>(sp => sp.GetRequiredService<LinePushClient>());
 builder.Services.AddScoped<IAllowedUserStore, AllowedUserStore>();
 builder.Services.AddScoped<AddAllowedUserCommandHandler>();
+builder.Services.AddScoped<RemoveAllowedUserCommandHandler>();
+builder.Services.AddScoped<SendReminderDigestCommandHandler>();
 builder.Services.AddScoped<ILineWebhookHandler, LineWebhookHandler>();
 builder.Services.AddScoped<LineWebhookDispatcher>();
 
@@ -137,6 +146,33 @@ app.MapPost("/api/questions", async (
         {
             answer = result.Answer,
             usedChunks = result.UsedChunks.Select(c => new { c.SourceDocument, c.Heading, c.SchoolYear, c.PublishedDate }),
+        });
+    })
+    .AddEndpointFilter<ApiKeyAuthFilter>();
+
+// Triggered by an external scheduler (Cloud Scheduler, configured outside this codebase for
+// Monday/Thursday 18:00 Taipei time) — Cloud Run scales to zero, so there's no in-process cron.
+app.MapPost("/api/reminders/send", async (
+        SendReminderDigestCommandHandler handler,
+        IAllowedUserStore allowedUserStore,
+        IOptions<LineOptions> lineOptions,
+        CancellationToken cancellationToken) =>
+    {
+        var recipients = await allowedUserStore.GetAllUserIdsAsync(cancellationToken);
+        var adminUserId = lineOptions.Value.PrimaryAdminUserId;
+
+        if (adminUserId is null)
+        {
+            return Results.Problem("No admin LINE User ID configured to receive failure alerts.", statusCode: 500);
+        }
+
+        var command = new SendReminderDigestCommand(recipients, adminUserId);
+        var result = await handler.HandleAsync(command, cancellationToken);
+        return Results.Ok(new
+        {
+            succeeded = result.Succeeded,
+            pushedCount = result.PushedCount,
+            failedUserIds = result.FailedUserIds,
         });
     })
     .AddEndpointFilter<ApiKeyAuthFilter>();
