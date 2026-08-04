@@ -54,10 +54,9 @@ public sealed class LineWebhookHandler(
             logger.LogInformation("Denying message from non-whitelisted user {UserId}", userId);
             // Reply with their own ID (not silence) — otherwise there's no way for someone
             // other than an admin to find their own ID and ask to be added to the whitelist.
-            await replyClient.ReplyAsync(
+            await SendReplyAsync(
                 lineEvent.ReplyToken,
-                $"很抱歉，這個小幫手目前僅限受邀請的使用者使用。\n\n如需申請使用權限，請將以下 ID 提供給管理員：\n{userId}",
-                cancellationToken);
+                $"很抱歉，這個小幫手目前僅限受邀請的使用者使用。\n\n如需申請使用權限，請將以下 ID 提供給管理員：\n{userId}");
             return;
         }
 
@@ -80,7 +79,18 @@ public sealed class LineWebhookHandler(
             answer = "系統忙碌中，請稍後再試";
         }
 
-        await replyClient.ReplyAsync(lineEvent.ReplyToken, answer, cancellationToken);
+        await SendReplyAsync(lineEvent.ReplyToken, answer);
+    }
+
+    // Uses its own short-lived token instead of the caller's cancellationToken: that token
+    // bounds the (possibly slow) AI answer call above, and confirmed live that when it fires
+    // mid-answer, reusing it here made this fallback reply fail too — the user got no message
+    // at all instead of "系統忙碌中". Sending a reply is a fast, independent operation and
+    // shouldn't inherit a deadline that was meant for something else.
+    private async Task SendReplyAsync(string replyToken, string text)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await replyClient.ReplyAsync(replyToken, text, cts.Token);
     }
 
     private async Task HandleAddUserCommandAsync(
@@ -102,6 +112,6 @@ public sealed class LineWebhookHandler(
             _ => throw new InvalidOperationException($"Unhandled AddAllowedUserOutcome: {result.Outcome}"),
         };
 
-        await replyClient.ReplyAsync(replyToken, message, cancellationToken);
+        await SendReplyAsync(replyToken, message);
     }
 }
